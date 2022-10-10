@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "FanControl.EFC_X9": {
+      "commandName": "Project"
+    },
+    "FanControl": {
+      "commandName": "Executable",
+      "executablePath": "C:\\Users\\Jon\\Desktop\\FanControlnet60\\FanControl.exe",
+      "workingDirectory": "C:\\Users\\Jon\\Desktop\\FanControlnet60"
+    }
+  }
+}

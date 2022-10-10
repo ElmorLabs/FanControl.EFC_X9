@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>FanControl.EFC_X9</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="EFC_X9_Core">
+      <HintPath>..\..\EFC_SW\EFC_X9_Core\bin\Debug\net6.0\EFC_X9_Core.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="FanControl.Plugins">
+      <HintPath>FanControl.Plugins.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="xcopy &quot;$(TargetDir)\*.dll&quot; &quot;C:\Users\Jon\Desktop\FanControlnet60\Plugins\&quot; /F /Y&#xD;&#xA;xcopy &quot;$(TargetDir)\*.pdb&quot; &quot;C:\Users\Jon\Desktop\FanControlnet60\Plugins\&quot; /F /Y" />
+  </Target>
+
+</Project>
