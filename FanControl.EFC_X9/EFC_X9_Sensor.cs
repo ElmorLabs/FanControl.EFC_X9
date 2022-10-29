@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using EFC_Core;
 using FanControl.Plugins;
 
 namespace FanControl.EFC_X9 {
@@ -15,10 +16,12 @@ namespace FanControl.EFC_X9 {
 
         public float? Value { get; set; }
 
-        public int EFC_X9_Id;
+        public Device_EFC_X9 Device { get; private set; }
+        public int DeviceId { get; private set; }
 
-        public EFC_X9_Sensor(int id1, string id2, string name) {
-            EFC_X9_Id = id1;
+        public EFC_X9_Sensor(Device_EFC_X9 device, int id1, string id2, string name) {
+            Device = device;
+            DeviceId = id1;
             Id = id2;
             Name = name;
         }
@@ -26,6 +29,7 @@ namespace FanControl.EFC_X9 {
         public void Update() {
             // Use global update function instead
         }
+
     }
 
     public class EFC_X9_FanControlSensor : IPluginControlSensor {
@@ -35,13 +39,15 @@ namespace FanControl.EFC_X9 {
 
         public float? Value { get; set; }
 
-        public int EFC_X9_Id;
+        public Device_EFC_X9 Device { get; private set; }
+        public int DeviceId { get; private set; }
 
         public delegate void FanDutyUpdatedEventHandler(EFC_X9_FanControlSensor sender, int duty);
         public event FanDutyUpdatedEventHandler? FanDutyUpdated;
 
-        public EFC_X9_FanControlSensor(int id1, string id2, string name) {
-            EFC_X9_Id = id1;
+        public EFC_X9_FanControlSensor(Device_EFC_X9 device, int id1, string id2, string name) {
+            Device = device;
+            DeviceId = id1;
             Id = id2;
             Name = name;
         }

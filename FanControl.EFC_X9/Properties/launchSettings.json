@@ -5,8 +5,8 @@
     },
     "FanControl": {
       "commandName": "Executable",
-      "executablePath": "C:\\Users\\Jon\\Desktop\\FanControlnet60\\FanControl.exe",
-      "workingDirectory": "C:\\Users\\Jon\\Desktop\\FanControlnet60"
+      "executablePath": "C:\\FanControl_net6\\FanControl.exe",
+      "workingDirectory": "C:\\FanControl_net6\\"
     }
   }
 }

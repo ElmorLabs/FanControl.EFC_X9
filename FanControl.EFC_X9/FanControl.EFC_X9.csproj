@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="xcopy &quot;$(TargetDir)\*.dll&quot; &quot;C:\Users\Jon\Desktop\FanControlnet60\Plugins\&quot; /F /Y&#xD;&#xA;xcopy &quot;$(TargetDir)\*.pdb&quot; &quot;C:\Users\Jon\Desktop\FanControlnet60\Plugins\&quot; /F /Y" />
+    <Exec Command="xcopy &quot;$(TargetDir)\*.dll&quot; &quot;C:\FanControl_net6\Plugins\&quot; /F /Y&#xD;&#xA;xcopy &quot;$(TargetDir)\*.pdb&quot; &quot;C:\FanControl_net6\Plugins\&quot; /F /Y" />
   </Target>
 
 </Project>

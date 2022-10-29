@@ -1,24 +1,38 @@
 ﻿using EFC_Core;
 using FanControl.Plugins;
+using System.Runtime.Intrinsics.X86;
 
 namespace FanControl.EFC_X9 {
     public class EFC_X9_Plugin : IPlugin2 {
         
         public string Name { get { return "EFC-X9"; } }
 
-        private Device_EFC_X9_V1? efc_device;
+        private List<Device_EFC_X9> device_list = new();
         private List<IPluginSensor> temp_sensor_list = new();
         private List<IPluginSensor> fan_speed_list = new();
         private List<IPluginControlSensor> fan_list = new();
 
+        private readonly IPluginLogger _logger;
+        private readonly IPluginDialog _dialog;
+
+        public EFC_X9_Plugin(IPluginLogger logger, IPluginDialog dialog) {
+            _logger = logger;
+            _dialog = dialog;
+        }
+
         public void Close() {
-            temp_sensor_list.Clear();
-            //fan_speed_list.Clear();
-            fan_list.Clear();
-            if(efc_device != null) {
-                efc_device.Disconnect();
-                efc_device = null;
+            foreach(EFC_X9_FanControlSensor fan_sensor in fan_list) {
+                fan_sensor.FanDutyUpdated -= Fan_sensor_FanDutyUpdated;
             }
+            fan_speed_list.Clear();
+            fan_list.Clear();
+            temp_sensor_list.Clear();
+            foreach(Device_EFC_X9 device in device_list) {
+                if(device != null) {
+                    device.Disconnect();
+                }
+            }
+            device_list.Clear();
         }
 
         public void Initialize() {
@@ -27,49 +41,59 @@ namespace FanControl.EFC_X9 {
 
         public void Load(IPluginSensorsContainer _container) {
 
+            // Write log entry
+            _logger.Log($"{Name} plugin Load()");
+
             // Find and set device
-            Device_EFC_X9_V1.GetAvailableDevices(out List<Device_EFC_X9_V1> deviceList);
+            Device_EFC_X9.GetAvailableDevices(out List<Device_EFC_X9> deviceList);
 
-            if(deviceList.Count > 0) {
-                // TODO: support more than first device
-                efc_device = deviceList[0];
-            }
+            _logger.Log($"{Name} plugin found {deviceList.Count} devices");
 
-            if(efc_device != null && efc_device.Status == DeviceStatus.CONNECTED) {
+            // Build sensor and control lists
+            fan_speed_list.Clear();
+            fan_list.Clear();
+            temp_sensor_list.Clear();
 
-                // Build sensor and control lists
+            List<Guid> guid_list = new List<Guid>();
 
-                // Fans
-                fan_speed_list.Clear();
-                fan_list.Clear();
+            foreach(Device_EFC_X9 device in deviceList) {
+                
+                // Check device is connected and not already added (prevent issues when Guid is empty, FW < 3)
+                if(device.Status == DeviceStatus.CONNECTED && !guid_list.Contains(device.Guid)) {
 
-                for(int i = 0; i<Device_EFC_X9_V1.FAN_NUM; i++) {
-                    string fan_name_str = $"FAN{i + 1}";
-                    string fan_id_str = $"{Name}.0.{fan_name_str}";
+                    device_list.Add(device);
+                    guid_list.Add(device.Guid);
+                    
+                    for(int i = 0; i < Device_EFC_X9.FAN_NUM; i++) {
 
-                    EFC_X9_FanControlSensor fan_sensor = new EFC_X9_FanControlSensor(i, fan_id_str, fan_name_str);
-                    fan_sensor.FanDutyUpdated += Fan_sensor_FanDutyUpdated;
-                    fan_list.Add(fan_sensor);
+                        // Fans and temperature
 
-                    EFC_X9_Sensor fan_speed_sensor = new EFC_X9_Sensor(i, fan_id_str, fan_name_str);
-                    fan_speed_list.Add(fan_speed_sensor);
+                        string fan_name_str = $"FAN{i + 1}";
+                        string fan_id_str = $"{device.Name}.{device.Guid}.{fan_name_str}";
 
+                        EFC_X9_FanControlSensor fan_sensor = new EFC_X9_FanControlSensor(device, i, fan_id_str, fan_name_str);
+                        fan_sensor.FanDutyUpdated += Fan_sensor_FanDutyUpdated;
+                        fan_list.Add(fan_sensor);
+
+                        EFC_X9_Sensor fan_speed_sensor = new EFC_X9_Sensor(device, i, fan_id_str, fan_name_str);
+                        fan_speed_list.Add(fan_speed_sensor);
+
+                        // Temperatures
+
+                        EFC_X9_Sensor temp_sensor;
+
+                        // Thermistors
+                        temp_sensor = new EFC_X9_Sensor(device, 0, $"{device.Name}.{device.Guid}.TS1", $"Thermistor 1 Temperature");
+                        temp_sensor_list.Add(temp_sensor);
+                        temp_sensor = new EFC_X9_Sensor(device, 1, $"{device.Name}.{device.Guid}.TS2", $"Thermistor 2 Temperature");
+                        temp_sensor_list.Add(temp_sensor);
+
+                        // Ambient temperature
+                        temp_sensor = new EFC_X9_Sensor(device, 2, $"{device.Name}.{device.Guid}.TAMB", $"Ambient Temperature");
+                        temp_sensor_list.Add(temp_sensor);
+
+                    }
                 }
-
-                // Temperatures
-                temp_sensor_list.Clear();
-
-                EFC_X9_Sensor temp_sensor;
-
-                // Thermistors
-                temp_sensor = new EFC_X9_Sensor(0, $"{Name}.0.TS1", $"Thermistor 1 Temperature");
-                temp_sensor_list.Add(temp_sensor);
-                temp_sensor = new EFC_X9_Sensor(1, $"{Name}.0.TS2", $"Thermistor 2 Temperature");
-                temp_sensor_list.Add(temp_sensor);
-
-                // Ambient temperature
-                temp_sensor = new EFC_X9_Sensor(2, $"{Name}.0.TAMB", $"Ambient Temperature");
-                temp_sensor_list.Add(temp_sensor);
 
                 _container.TempSensors.AddRange(temp_sensor_list);
                 _container.FanSensors.AddRange(fan_speed_list);
@@ -80,61 +104,83 @@ namespace FanControl.EFC_X9 {
         }
 
         private void Fan_sensor_FanDutyUpdated(EFC_X9_FanControlSensor sender, int duty) {
-            if(efc_device != null && efc_device.Status == DeviceStatus.CONNECTED) {
-                efc_device.SetFanDuty(sender.EFC_X9_Id, duty);
+            if(sender.Device != null && sender.Device.Status == DeviceStatus.CONNECTED) {
+                sender.Device.SetFanDuty(sender.DeviceId, duty);
             }
         }
 
         public void Update() {
-            if(efc_device != null) {
 
-                if(efc_device.Status != DeviceStatus.CONNECTED) {
-                    // Attempt to connect
-                    efc_device.Connect();
-                }
-
-                if(efc_device.Status == DeviceStatus.CONNECTED) {
-
-                    // Update sensors
-                    efc_device.Update();
-
-                    // Update fan speed and duties
-                    for(int i = 0; i < fan_list.Count; i++) {
-
-                        EFC_X9_FanControlSensor fan_sensor = (EFC_X9_FanControlSensor)fan_list[i];
-                        fan_sensor.Value = (float?)efc_device.Sensors.FanDuties[i];
-
-                        EFC_X9_Sensor fan_speed_sensor = (EFC_X9_Sensor)fan_speed_list[i];
-                        fan_speed_sensor.Value = (float?)efc_device.Sensors.FanSpeeds[i];
+            foreach(Device_EFC_X9 device in device_list) {
+                if(device != null) {
+                    if(device.Status != DeviceStatus.CONNECTED) {
+                        // Attempt to connect
+                        device.Connect();
                     }
 
-                    // Update temperatures
+                    if(device.Status == DeviceStatus.CONNECTED) {
 
-                    EFC_X9_Sensor temp_sensor;
+                        // Update sensors
+                        device.Update();
 
-                    temp_sensor = (EFC_X9_Sensor)temp_sensor_list[0];
-                    temp_sensor.Value = efc_device.Sensors.Temperature1 > 1000 ? null : (float?)efc_device.Sensors.Temperature1;
+                        // Update fan speed and duties
+                        for(int i = 0; i<Device_EFC_X9.FAN_NUM; i++) {
 
-                    temp_sensor = (EFC_X9_Sensor)temp_sensor_list[1];
-                    temp_sensor.Value = efc_device.Sensors.Temperature2 > 1000 ? null : (float?)efc_device.Sensors.Temperature2;
+                            EFC_X9_FanControlSensor? fan_sensor = (EFC_X9_FanControlSensor?) fan_list.Find(s => s != null && s is EFC_X9_FanControlSensor && ((EFC_X9_FanControlSensor)s).Device == device && ((EFC_X9_FanControlSensor)s).DeviceId == i);
 
-                    temp_sensor = (EFC_X9_Sensor)temp_sensor_list[2];
-                    temp_sensor.Value = efc_device.Sensors.TemperatureAmbient > 1000 ? null : (float?)efc_device.Sensors.TemperatureAmbient;
+                            if(fan_sensor != null) {
+                                fan_sensor.Value = (float?)device.Sensors.FanDuties[i];
+                            }
+
+                            EFC_X9_Sensor? fan_speed_sensor = (EFC_X9_Sensor?)fan_speed_list.Find(s => s != null && s is EFC_X9_Sensor && ((EFC_X9_Sensor)s).Device == device && ((EFC_X9_Sensor)s).DeviceId == i);
+
+                            if(fan_speed_sensor != null) {
+                                fan_speed_sensor.Value = (float?)device.Sensors.FanSpeeds[i];
+                            }
+                            
+                        }
+
+                        // Update temperatures
+
+                        EFC_X9_Sensor? temp_sensor1 = (EFC_X9_Sensor?)temp_sensor_list.Find(s => s != null && s is EFC_X9_Sensor && ((EFC_X9_Sensor)s).Device == device && ((EFC_X9_Sensor)s).DeviceId == 0);
+
+                        if(temp_sensor1 != null) {
+                            temp_sensor1.Value = device.Sensors.Temperature1 > 1000 ? null : (float?)device.Sensors.Temperature1;
+                        }
+
+                        EFC_X9_Sensor? temp_sensor2 = (EFC_X9_Sensor?)temp_sensor_list.Find(s => s != null && s is EFC_X9_Sensor && ((EFC_X9_Sensor)s).Device == device && ((EFC_X9_Sensor)s).DeviceId == 1);
+
+                        if(temp_sensor2 != null) {
+                            temp_sensor2.Value = device.Sensors.Temperature2 > 1000 ? null : (float?)device.Sensors.Temperature2;
+                        }
+
+                        EFC_X9_Sensor? temp_sensor_ambient = (EFC_X9_Sensor?)temp_sensor_list.Find(s => s != null && s is EFC_X9_Sensor && ((EFC_X9_Sensor)s).Device == device && ((EFC_X9_Sensor)s).DeviceId == 2);
+
+                        if(temp_sensor_ambient != null) {
+                            temp_sensor_ambient.Value = device.Sensors.TemperatureAmbient > 1000 ? null : (float?)device.Sensors.TemperatureAmbient;
+                        }
+
+                    } else {
+
+                        // Not connected, set values to null
+                        foreach(EFC_X9_Sensor fan_speed in fan_speed_list) {
+                            if(fan_speed.Device == device) {
+                                fan_speed.Value = null;
+                            }
+                        }
+                        foreach(EFC_X9_FanControlSensor fan in fan_list) {
+                            if(fan.Device == device) {
+                                fan.Value = null;
+                            }
+                        }
+                        foreach(EFC_X9_Sensor temp_sensor in temp_sensor_list) {
+                            if(temp_sensor.Device == device) {
+                                temp_sensor.Value = null;
+                            }
+                        }
+
+                    }
                 }
-                
-                return;
-
-            }
-
-            // Not connected, set values to null
-            foreach(EFC_X9_Sensor fan_speed in fan_speed_list) {
-                fan_speed.Value = null;
-            }
-            foreach(EFC_X9_FanControlSensor fan in fan_list) {
-                fan.Value = null;
-            }
-            foreach(EFC_X9_Sensor temp_sensor in temp_sensor_list) {
-                temp_sensor.Value = null;
             }
         }
     }
